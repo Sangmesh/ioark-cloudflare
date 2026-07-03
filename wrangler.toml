@@ -19,9 +19,13 @@ not_found_handling = "single-page-application"
 [build]
 command = "npm run build"
 
-# Public HTTPS base URL of the backend the Worker reverse-proxies /api etc. to.
-# Override in the dashboard (Workers -> Settings -> Variables) if you prefer not
-# to commit it. The backend's BASE_DOMAIN must match your tenant domain so its
-# Host-based tenant resolution works (see iam-platform config.py).
+# Worker variables (override in the dashboard: Workers -> Settings -> Variables).
 [vars]
+# Backend the Worker reverse-proxies /api, /authorize, /oauth, /scim,
+# /.well-known and /healthz to.
 BACKEND_ORIGIN = "https://apis.ioark.online"
+# Domain the SPA (and tenant subdomains) are served under. The Worker derives
+# X-Tenant from the visited host: acme.ioark.online -> "acme"; the bare domain,
+# www, or a *.workers.dev URL -> the control plane ("system"). Adjust to match
+# the custom domain you attach to this Worker.
+TENANT_BASE_DOMAIN = "ioark.online"
