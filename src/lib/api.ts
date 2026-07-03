@@ -1,16 +1,35 @@
 // Tenant resolution on the client:
-//  - In production each tenant has its own subdomain (acme.iam.local) and the
-//    backend derives the tenant from the Host header (X-Tenant is ignored).
+//  - In production each tenant has its own subdomain (acme.iam.example.com) and
+//    the backend derives the tenant from the Host header (X-Tenant is ignored).
 //  - In dev (localhost) we send X-Tenant from the org chosen on the login screen.
-// A tenant subdomain is present for hosts like `acme.iam.local` (prod) or
-// `acme.localhost` (local dev). The bare host (`localhost` / `iam.local`) is the
-// control plane and has no subdomain tenant.
+//
+// This must mirror the backend's Host->slug logic (iam-platform tenancy.py).
+// Set VITE_BASE_DOMAIN to the tenant base domain (e.g. "iam.example.com") so we
+// can reliably tell the control-plane host from a tenant subdomain and NOT
+// mistake a platform host like `my-app.pages.dev` for a tenant.
+const BASE_DOMAIN = (import.meta.env.VITE_BASE_DOMAIN || "").toLowerCase();
+
 export function subdomainTenant(): string | null {
-  const host = window.location.hostname;
-  if (host === "localhost") return null;
+  const host = window.location.hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1") return null;
+
+  if (BASE_DOMAIN) {
+    // Bare base domain (or www) -> control plane, no tenant subdomain.
+    if (host === BASE_DOMAIN || host === `www.${BASE_DOMAIN}`) return null;
+    // acme.iam.example.com -> "acme"
+    if (host.endsWith("." + BASE_DOMAIN)) {
+      return host.slice(0, -(BASE_DOMAIN.length + 1)).split(".")[0] || null;
+    }
+    // Any other host (e.g. *.pages.dev preview) is treated as the control plane;
+    // the tenant is then chosen on the login screen.
+    return null;
+  }
+
+  // Local-dev fallback when VITE_BASE_DOMAIN isn't set: only *.localhost maps to
+  // a tenant subdomain. (We deliberately do NOT infer a tenant from arbitrary
+  // multi-label hosts, which would misfire on platform domains like pages.dev.)
   const parts = host.split(".");
-  if (parts.length >= 2 && parts[parts.length - 1] === "localhost") return parts[0]; // sub.localhost
-  if (parts.length > 2) return parts[0]; // sub.domain.tld
+  if (parts.length >= 2 && parts[parts.length - 1] === "localhost") return parts[0];
   return null;
 }
 
