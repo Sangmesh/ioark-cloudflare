@@ -27,6 +27,7 @@
 //   TENANT_BASE_DOMAIN  = ioark.online   (domain the SPA/tenant subdomains live under)
 
 const PROXY_RE = /^\/(api|authorize|oauth|scim|\.well-known|healthz)(\/|$)/;
+
 const CONTROL_PLANE = 'system';
 
 // acme.ioark.online -> "acme"; ioark.online / www / workers.dev / unknown ->
