@@ -1,4 +1,0 @@
-# SPA client-side routing fallback: any path that isn't a real static file and
-# isn't intercepted by functions/_middleware.js is served index.html (HTTP 200,
-# so the URL is preserved for React Router).
-/*    /index.html    200
