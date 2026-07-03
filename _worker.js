@@ -3,21 +3,46 @@
 // It does TWO jobs (this is what nginx.conf did in the Docker deployment):
 //
 //  1. Reverse-proxy the backend paths (/api, /authorize, /oauth, /scim,
-//     /.well-known, /healthz) to BACKEND_ORIGIN. The original tenant-bearing
-//     Host (e.g. acme.iam.example.com) is forwarded so the backend's
-//     Host-based tenant resolution keeps working — the backend IGNORES
-//     X-Tenant in production (see iam-platform/backend/app/core/tenancy.py).
-//     Keeping the API same-origin also means the SPA's cookie-based auth
-//     (`credentials: "include"`) needs no CORS and no cookie changes.
+//     /.well-known, /healthz) to BACKEND_ORIGIN. Because ioark is MULTI-TENANT,
+//     the backend must know which organization each request is for. In Docker
+//     it read that from the Host header, but Cloudflare forces the subrequest
+//     Host to the origin's own hostname (apis.ioark.online), so the backend
+//     could only ever see "apis" -> "unknown organization 'apis'". Instead we
+//     derive the tenant from the hostname the browser used and pass it in the
+//     X-Tenant header, which Cloudflare forwards unchanged. (X-Forwarded-Host is
+//     also set, for a cleaner backend that reads it directly.)
 //
-//  2. Serve the Vite build (dist/) via the ASSETS binding declared in
-//     wrangler.toml's [assets] block, with single-page-application fallback so
-//     React Router deep links resolve on the client.
+//     Backend requirement (env vars only, no code change):
+//       ENVIRONMENT=dev            -> makes the backend honor X-Tenant
+//       BASE_DOMAIN=edge.invalid   -> a value that is NOT a parent of
+//                                     apis.ioark.online, so the backend stops
+//                                     guessing the tenant from its own Host and
+//                                     uses our X-Tenant instead.
 //
-// Required variable: BACKEND_ORIGIN (wrangler.toml [vars], or override as a
-// Workers variable/secret in the dashboard), e.g. https://api.example.com
+//  2. Serve the Vite build (dist/) via the ASSETS binding, with
+//     single-page-application fallback so React Router deep links resolve.
+//
+// Worker vars (wrangler.toml [vars] or dashboard):
+//   BACKEND_ORIGIN      = https://apis.ioark.online
+//   TENANT_BASE_DOMAIN  = ioark.online   (domain the SPA/tenant subdomains live under)
 
 const PROXY_RE = /^\/(api|authorize|oauth|scim|\.well-known|healthz)(\/|$)/;
+const CONTROL_PLANE = 'system';
+
+// acme.ioark.online -> "acme"; ioark.online / www / workers.dev / unknown ->
+// the control plane ("system"). Mirrors the backend's tenant slug rules.
+function tenantFromHost(host, base) {
+  host = (host || '').split(':')[0].toLowerCase();
+  if (!host) return CONTROL_PLANE;
+  base = (base || '').toLowerCase();
+  if (base) {
+    if (host === base || host === 'www.' + base) return CONTROL_PLANE;
+    if (host.endsWith('.' + base)) {
+      return host.slice(0, -(base.length + 1)).split('.')[0] || CONTROL_PLANE;
+    }
+  }
+  return CONTROL_PLANE;
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -37,9 +62,12 @@ export default {
       // /api/... , /authorize?... , etc.
       const target = new URL(url.pathname + url.search, backend);
 
+      const tenant = tenantFromHost(url.host, env.TENANT_BASE_DOMAIN);
+
       const proxyReq = new Request(target.toString(), request);
-      // Preserve the tenant identity for the backend's Host-based resolution.
-      proxyReq.headers.set('Host', url.host);
+      // Tell the backend which organization this request is for. (Setting Host
+      // here would be pointless — Cloudflare overwrites it with the origin host.)
+      proxyReq.headers.set('X-Tenant', tenant);
       proxyReq.headers.set('X-Forwarded-Host', url.host);
       proxyReq.headers.set('X-Forwarded-Proto', url.protocol.replace(':', ''));
 
