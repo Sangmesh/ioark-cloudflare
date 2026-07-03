@@ -16,6 +16,20 @@
 //   BACKEND_ORIGIN = https://api.example.com   (your public backend base URL)
 
 const PROXY_RE = /^\/(api|authorize|oauth|scim|\.well-known|healthz)(\/|$)/;
+const CONTROL_PLANE = 'system';
+
+function tenantFromHost(host, base) {
+  host = (host || '').split(':')[0].toLowerCase();
+  if (!host) return CONTROL_PLANE;
+  base = (base || '').toLowerCase();
+  if (base) {
+    if (host === base || host === 'www.' + base) return CONTROL_PLANE;
+    if (host.endsWith('.' + base)) {
+      return host.slice(0, -(base.length + 1)).split('.')[0] || CONTROL_PLANE;
+    }
+  }
+  return CONTROL_PLANE;
+}
 
 export async function onRequest(context) {
   const { request, env, next } = context;
@@ -25,14 +39,8 @@ export async function onRequest(context) {
   // provided by public/_redirects).
   if (!PROXY_RE.test(url.pathname)) return next();
 
-  if (!env.BACKEND_ORIGIN) {
-    return new Response(
-      "Edge proxy misconfigured: BACKEND_ORIGIN environment variable is not set.",
-      { status: 500, headers: { "content-type": "text/plain" } },
-    );
-  }
-
-  const backend = new URL(env.BACKEND_ORIGIN);
+  const backendOrigin = env.BACKEND_ORIGIN || "https://apis.ioark.online";
+  const backend = new URL(backendOrigin);
 
   // The host the browser used — carries the tenant subdomain. The backend
   // derives the tenant from this, so it must survive the hop.
@@ -42,8 +50,11 @@ export async function onRequest(context) {
   // the backend still receives /api/... , /authorize?... , etc.
   const targetUrl = new URL(url.pathname + url.search, backend);
 
+  const tenant = tenantFromHost(originalHost, env.TENANT_BASE_DOMAIN || "ioark.online");
+
   const proxyReq = new Request(targetUrl.toString(), request);
   proxyReq.headers.set("Host", originalHost);
+  proxyReq.headers.set("X-Tenant", tenant);
   proxyReq.headers.set("X-Forwarded-Host", originalHost);
   proxyReq.headers.set("X-Forwarded-Proto", url.protocol.replace(":", ""));
 

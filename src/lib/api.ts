@@ -8,7 +8,7 @@
 // can reliably tell the control-plane host from a tenant subdomain and NOT
 // mistake a platform host like `my-app.pages.dev` for a tenant.
 const BASE_DOMAIN = (import.meta.env.VITE_BASE_DOMAIN || "").toLowerCase();
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "https://apis.ioark.online").replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
 
 export function subdomainTenant(): string | null {
   const host = window.location.hostname.toLowerCase();
@@ -57,7 +57,7 @@ function qs(params?: Record<string, any>): string {
 }
 
 async function req(path: string, opts: RequestInit = {}) {
-  const res = await fetch(`${API_BASE_URL}/api${path}`, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     credentials: "include",
     headers: { ...headers(), ...(opts.headers || {}) },
     ...opts,
