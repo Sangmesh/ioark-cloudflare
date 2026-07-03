@@ -1,0 +1,27 @@
+name = "ioark-cloudflare"
+main = "_worker.js"
+workers_dev = true
+compatibility_date = "2025-09-01"
+
+# If you deploy locally with `wrangler deploy` (rather than a Git-connected
+# Cloudflare Workers Build), uncomment and set your account id:
+# account_id = "<your-cloudflare-account-id>"
+
+# Static asset binding for the Vite SPA.
+# `binding = "ASSETS"` exposes env.ASSETS.fetch() inside _worker.js.
+# Wrangler 3.78+ honours this block; older versions ignore it silently, which
+# leaves env.ASSETS undefined at runtime (see the guard in _worker.js).
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[build]
+command = "npm run build"
+
+# Public HTTPS base URL of the backend the Worker reverse-proxies /api etc. to.
+# Override in the dashboard (Workers -> Settings -> Variables) if you prefer not
+# to commit it. The backend's BASE_DOMAIN must match your tenant domain so its
+# Host-based tenant resolution works (see iam-platform config.py).
+[vars]
+BACKEND_ORIGIN = "https://apis.ioark.online"
