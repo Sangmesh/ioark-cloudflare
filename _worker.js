@@ -67,42 +67,17 @@ export default {
         proxyReq.headers.set('X-Tenant', tenant);
         proxyReq.headers.set('X-Forwarded-Host', url.host);
         proxyReq.headers.set('X-Forwarded-Proto', url.protocol.replace(':', ''));
-        // Some backends also look at the Host header to derive the tenant.
-        proxyReq.headers.set('Host', url.host);
         return proxyReq;
       };
 
       // Rewrite only the origin; keep path + query so the backend still sees
       // /api/... , /authorize?... , etc.
       const target = new URL(url.pathname + url.search, backend);
-      const initialReq = buildProxyRequest(target, request.clone());
+      const proxyReq = buildProxyRequest(target, request.clone());
 
       // `redirect: manual` so OIDC 3xx (e.g. /authorize) pass back to the
       // browser intact instead of being followed at the edge.
-      let res = await fetch(initialReq, { redirect: 'manual' });
-
-      // Some deployments reject the tenantless upstream host with
-      // "Unknown organization 'apis'". Retry against a tenant-scoped hostname
-      // when that happens, while still preserving the X-Tenant header.
-      if (res.status === 404) {
-        const bodyText = await res.text();
-        const shouldRetryTenantHost = bodyText.includes('Unknown organization') && tenant && tenant !== CONTROL_PLANE;
-        if (shouldRetryTenantHost) {
-          const tenantBackend = new URL(backend);
-          tenantBackend.hostname = `${tenant}.${tenantBackend.hostname}`;
-          const tenantTarget = new URL(url.pathname + url.search, tenantBackend);
-          const fallbackReq = buildProxyRequest(tenantTarget, request.clone());
-          res = await fetch(fallbackReq, { redirect: 'manual' });
-        }
-        if (res.status === 404) {
-          return new Response(bodyText, {
-            status: res.status,
-            headers: res.headers,
-          });
-        }
-      }
-
-      return res;
+      return fetch(proxyReq, { redirect: 'manual' });
     }
 
     // ── 2. Static SPA assets (with SPA fallback) ────────────────────────────
